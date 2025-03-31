@@ -59,45 +59,45 @@ class TechniqueBase(abc.ABC):
         })
     
     def _default_leak_function(self, filename: str) -> str:
-    """
-    Default implementation of the leak function using the target URL.
-    
-    Args:
-        filename: Path to the file to leak
+        """
+        Default implementation of the leak function using the target URL.
         
-    Returns:
-        Contents of the file if successful, empty string otherwise
-    """
-    if not self.target:
-        raise TechniqueError("No target URL provided and no custom leak function defined")
-    
-    # Prepare the filename
-    encoded_filename = self._encode_filename(filename)
-    
-    # Build the complete URL
-    complete_url = self.target.format(encoded_filename)
-    
-    if hasattr(self, 'verbose') and self.verbose:
-        logger.debug(f"Requesting URL: {complete_url}")
+        Args:
+            filename: Path to the file to leak
+            
+        Returns:
+            Contents of the file if successful, empty string otherwise
+        """
+        if not self.target:
+            raise TechniqueError("No target URL provided and no custom leak function defined")
         
-    # Make the request
-    try:
-        response = self.session.get(
-            complete_url,
-            timeout=self.timeout
-        )
+        # Prepare the filename
+        encoded_filename = self._encode_filename(filename)
+        
+        # Build the complete URL
+        complete_url = self.target.format(encoded_filename)
         
         if hasattr(self, 'verbose') and self.verbose:
-            logger.debug(f"Response status code: {response.status_code}")
+            logger.debug(f"Requesting URL: {complete_url}")
             
-        if response.status_code == 200:
-            return response.text
-        else:
-            logger.debug(f"Failed to leak file {filename}: HTTP {response.status_code}")
+        # Make the request
+        try:
+            response = self.session.get(
+                complete_url,
+                timeout=self.timeout
+            )
+            
+            if hasattr(self, 'verbose') and self.verbose:
+                logger.debug(f"Response status code: {response.status_code}")
+                
+            if response.status_code == 200:
+                return response.text
+            else:
+                logger.debug(f"Failed to leak file {filename}: HTTP {response.status_code}")
+                return ""
+        except requests.RequestException as e:
+            logger.debug(f"Request error when trying to leak {filename}: {str(e)}")
             return ""
-    except requests.RequestException as e:
-        logger.debug(f"Request error when trying to leak {filename}: {str(e)}")
-        return ""
     
     def _encode_filename(self, filename: str) -> str:
         """
