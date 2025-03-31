@@ -1,22 +1,20 @@
-import os
+#!/usr/bin/env python3
+"""
+Setup script for Elle-Est-Fit LFI to RCE Framework.
+"""
+
 from setuptools import setup, find_packages
-
-about = {}
-with open(os.path.join(os.path.dirname(__file__), "elle_est_fit", "__init__.py"), "r") as f:
-    exec(f.read(), about)
-
-with open("README.md", "r", encoding="utf-8") as f:
-    long_description = f.read()
+VERSION = "0.1.0"
 
 setup(
     name="elle-est-fit",
-    version=about["__version__"],
+    version=VERSION,
     description="LFI to RCE Framework",
-    long_description=long_description,
+    long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
-    author=about["__author__"],
+    author="ElleEstFit Contributors",
     author_email="sofiane.el@ynov.com",
-    url="https://github.com/username/elle-est-fit",
+    url="https://github.com/sofianeelhor/elle-est-fit",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 3 - Alpha",
@@ -38,5 +36,5 @@ setup(
             "elle-est-fit=elle_est_fit.cli:main",
         ],
     },
-    keywords=["infosec", "pentest", "lfi", "rce"],
+    keywords=["security", "pentest", "lfi", "rce"],
 )
