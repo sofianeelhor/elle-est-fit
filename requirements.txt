@@ -1,0 +1,7 @@
+requests>=2.25.0
+pytest>=6.2.5
+pytest-cov>=2.12.1
+mypy>=0.910
+black>=21.6b0
+isort>=5.9.2
+flake8>=3.9.2
