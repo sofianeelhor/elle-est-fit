@@ -40,19 +40,29 @@ logger = logging.getLogger("elle-est-fit")
 
 def setup_logging(verbose: bool = False):
     """Configure logging based on verbosity level."""
+    # Set up Rich logging
     log_level = logging.DEBUG if verbose else logging.INFO
     
-    # Set up Rich logging
+    # Configure root logger with Rich handler
     logging.basicConfig(
-        level=log_level,
+        level=log_level,  # This sets the threshold for which messages will be logged
         format="%(message)s",
         datefmt="[%X]",
-        handlers=[RichHandler(rich_tracebacks=True, console=console)]
+        handlers=[RichHandler(rich_tracebacks=True, console=console, show_time=False)]
     )
+    
+    # Ensure the elle-est-fit logger uses the right level
+    logger = logging.getLogger("elle-est-fit")
+    logger.setLevel(log_level)
+    
+    # Also set debug level for any technique module loggers
+    techniques_logger = logging.getLogger("elle_est_fit.techniques")
+    techniques_logger.setLevel(log_level)
     
     # Print a message to verify logging is working
     if verbose:
         console.print("[info]Verbose logging enabled[/info]")
+        logger.debug("Debug logging is active")
 
 
 def parse_args():
@@ -235,6 +245,9 @@ def test_chain(url, chain, verbose=False):
     except Exception as e:
         console.print(f"Error making request: {str(e)}", style="error")
 
+def debug(message: str):
+    """Display debug information when in verbose mode."""
+    logger.debug(message)
 
 def main():
     """Main entry point for the CLI."""
@@ -301,12 +314,18 @@ def main():
             verbose=args.verbose
         )
         
+        if args.verbose:
+            technique_str = f"'{args.technique}'" if args.technique else "auto-detect"
+            debug(f"Technique: {technique_str}")
+            console.print(f"[info]Double URL encode:[/info] {args.double_url_encode}")
+        if args.php:
+            console.print(f"[info]Custom PHP code:[/info] {args.php}")
+
         console.print("[warning]Note: If you experience HTTP 414 errors (URI Too Long), try shorter payloads[/warning]")
         console.print("[info]Attempting exploitation...[/info]")
         # Attempt to exploit
         if lfi.exploit():
 
-            # lfi.target = http://192.168.215.3/index.php?page={}, we remove the {} and concat ?cmd=id
             console.print(f"[success]Exploitation successful![/success] Shell created at {lfi.target.replace('{}','')+lfi.shell_path}&cmd=id", style="success")
             # Execute the custom command if provided
             if args.custom_cmd:

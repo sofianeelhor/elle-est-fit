@@ -87,7 +87,7 @@ class LFI:
             validate_url(self.target)
     
     def discover_techniques(self):
-        return ["php_filters", "php_session"]
+        return ["php_filters", "php_session", "pearcmd", "log_poisoning"]
 
 
     
