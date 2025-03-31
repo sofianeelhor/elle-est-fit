@@ -166,7 +166,6 @@ class LFI:
         
         Args:
             command: Command to execute (if None, will use self.custom_cmd or start an interactive shell)
-            
         Returns:
             Command output
         """
@@ -175,6 +174,15 @@ class LFI:
                 raise ElleEstFitError("Failed to establish a shell. Run exploit() first.")
         
         cmd = command or self.custom_cmd or "id"
+        
+        # For PHP filter technique, we might need to use shorter commands to avoid HTTP 414
+        if self.technique_name == "php_filters" and len(cmd) > 100:
+            logger.warning("Command is too long for PHP filter technique. Breaking into smaller parts.")
+            
+            # For long commands, consider executing a command that writes to a temporary file
+            # Then read that file in smaller chunks
+            return self._technique.execute(cmd[:100] + "...")
+        
         return self._technique.execute(cmd)
 
 

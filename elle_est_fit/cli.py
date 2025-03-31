@@ -262,7 +262,7 @@ def main():
             custom_cmd=args.custom_cmd,
             verbose=args.verbose
         )
-        
+        print("[*] Note: If you experience HTTP 414 errors (URI Too Long), try shorter payloads")
         print("[*] Attempting exploitation...")
         # Attempt to exploit
         if lfi.exploit():

