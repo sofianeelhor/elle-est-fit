@@ -30,6 +30,7 @@ setup(
     python_requires=">=3.8",
     install_requires=[
         "requests>=2.25.0",
+        "rich>=10.0.0",
     ],
     entry_points={
         "console_scripts": [

