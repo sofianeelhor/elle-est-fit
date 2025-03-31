@@ -6,12 +6,12 @@ from .exceptions import ElleEstFitError, TechniqueError, ValidationError
 
 __all__ = [
     "LFI",
-    "exploit", 
+    "exploit",
     "info",
     "shell",
     "ElleEstFitError",
     "TechniqueError",
-    "ValidationError"
+    "ValidationError",
 ]
 # Set up Rich logging for the package
 import logging
@@ -20,12 +20,14 @@ from rich.console import Console
 from rich.theme import Theme
 
 # Create a custom theme for Rich
-custom_theme = Theme({
-    "info": "cyan",
-    "warning": "yellow",
-    "error": "bold red",
-    "success": "bold green",
-})
+custom_theme = Theme(
+    {
+        "info": "cyan",
+        "warning": "yellow",
+        "error": "bold red",
+        "success": "bold green",
+    }
+)
 
 # Create a console with the custom theme
 console = Console(theme=custom_theme)
@@ -35,5 +37,5 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(message)s",
     datefmt="[%X]",
-    handlers=[RichHandler(rich_tracebacks=True, console=console)]
+    handlers=[RichHandler(rich_tracebacks=True, console=console)],
 )

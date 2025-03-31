@@ -9,9 +9,4 @@ from .pearcmd import PearcmdTechnique
 from .log_poisoning import LogPoisoningTechnique
 
 # List available techniques
-available_techniques = [
-    "php_filters",
-    "php_session",
-    "pearcmd",
-    "log_poisoning"
-]
+available_techniques = ["php_filters", "php_session", "pearcmd", "log_poisoning"]
